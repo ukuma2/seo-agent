@@ -181,17 +181,25 @@ def crawl_url(url: str) -> tuple[dict | None, str | None]:
     - data_dict contains: page_content, title, meta_description, h1
     - error_string is None on success, contains error message on failure
     """
+    # NOTE: Removed 'br' (Brotli) from Accept-Encoding to avoid binary data issues
+    # Only use gzip/deflate which requests handles automatically
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Encoding': 'gzip, deflate',  # NO brotli - causes binary issues
         'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
     }
     
     try:
         # Make request with timeout
-        response = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
+        response = requests.get(url, headers=headers, timeout=20, allow_redirects=True)
+        
+        # Force encoding detection if not set
+        if response.encoding is None or response.encoding == 'ISO-8859-1':
+            # Try to detect from content-type header or use apparent_encoding
+            response.encoding = response.apparent_encoding or 'utf-8'
         
         # Check for common error codes
         if response.status_code == 403:
@@ -201,40 +209,81 @@ def crawl_url(url: str) -> tuple[dict | None, str | None]:
         elif response.status_code >= 400:
             return None, f"HTTP Error {response.status_code}. Unable to access the page."
         
-        # Parse HTML
-        soup = BeautifulSoup(response.text, 'html.parser')
+        # Get text content with proper encoding
+        html_content = response.text
         
-        # Remove script and style elements for cleaner text
-        for element in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
-            element.decompose()
+        # Check if we got binary garbage
+        if '\x00' in html_content[:1000] or not any(c.isalpha() for c in html_content[:500]):
+            return None, "Received binary or corrupted data. The website may be blocking scrapers."
         
-        # Extract title
+        # Parse HTML with html.parser (most reliable)
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Extract title BEFORE removing elements
         title_tag = soup.find('title')
         title = title_tag.get_text(strip=True) if title_tag else "No title found"
         
-        # Extract meta description
+        # Extract meta description BEFORE removing elements
         meta_desc_tag = soup.find('meta', attrs={'name': 'description'})
+        if not meta_desc_tag:
+            meta_desc_tag = soup.find('meta', attrs={'name': 'Description'})
+        if not meta_desc_tag:
+            meta_desc_tag = soup.find('meta', attrs={'property': 'og:description'})
         meta_description = meta_desc_tag.get('content', '') if meta_desc_tag else "No meta description found"
         
-        # Extract H1
+        # Extract H1 BEFORE removing elements
         h1_tag = soup.find('h1')
         h1 = h1_tag.get_text(strip=True) if h1_tag else "No H1 found"
         
-        # Extract main text content
-        # Try to find main content areas first
-        main_content = soup.find('main') or soup.find('article') or soup.find('body')
+        # Now remove non-content elements for text extraction
+        for element in soup(['script', 'style', 'noscript', 'iframe', 'svg']):
+            element.decompose()
         
-        if main_content:
-            page_content = main_content.get_text(separator=' ', strip=True)
-        else:
+        # Extract main text content - try multiple strategies
+        page_content = ""
+        
+        # Strategy 1: Look for main content containers
+        content_selectors = [
+            soup.find('main'),
+            soup.find('article'),
+            soup.find('div', {'id': 'content'}),
+            soup.find('div', {'id': 'main-content'}),
+            soup.find('div', {'class': 'content'}),
+            soup.find('div', {'class': 'main-content'}),
+            soup.find('div', {'role': 'main'}),
+        ]
+        
+        for container in content_selectors:
+            if container:
+                page_content = container.get_text(separator=' ', strip=True)
+                if len(page_content) > 200:
+                    break
+        
+        # Strategy 2: If no main content found, use body
+        if len(page_content) < 200:
+            body = soup.find('body')
+            if body:
+                # Remove nav/footer/header from body copy
+                body_copy = BeautifulSoup(str(body), 'html.parser')
+                for elem in body_copy(['nav', 'footer', 'header', 'aside', 'form']):
+                    elem.decompose()
+                page_content = body_copy.get_text(separator=' ', strip=True)
+        
+        # Strategy 3: Fallback to all text
+        if len(page_content) < 100:
             page_content = soup.get_text(separator=' ', strip=True)
         
         # Clean up whitespace
         page_content = re.sub(r'\s+', ' ', page_content).strip()
         
-        # Check for empty content
-        if len(page_content) < 100:
-            return None, "Page content is too short or empty. The page may be JavaScript-rendered."
+        # Check for meaningful content
+        if len(page_content) < 50:
+            return None, "Page content is too short. The page may be mostly JavaScript-rendered."
+        
+        # Verify we have actual text content (not just symbols/numbers)
+        alpha_count = sum(1 for c in page_content[:500] if c.isalpha())
+        if alpha_count < 50:
+            return None, "Page content appears to be non-text or corrupted."
         
         return {
             'page_content': page_content,
