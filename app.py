@@ -101,7 +101,43 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# SIDEBAR CONFIGURATION
+# LOGIN SYSTEM
+# ==============================================================================
+
+# The access PIN code (change this to your preferred code)
+ACCESS_PIN = "2541"
+
+# Initialize session state for login
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+
+# Login screen
+if not st.session_state.authenticated:
+    st.title("🔐 SEO Evaluator - Login")
+    st.markdown("Please enter the access code to continue.")
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        pin_input = st.text_input(
+            "Enter 4-digit PIN",
+            type="password",
+            max_chars=4,
+            placeholder="****"
+        )
+        
+        if st.button("🔓 Login", use_container_width=True):
+            if pin_input == ACCESS_PIN:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("❌ Incorrect PIN. Please try again.")
+        
+        st.caption("Contact the administrator if you don't have the access code.")
+    
+    st.stop()  # Stop execution until authenticated
+
+# ==============================================================================
+# SIDEBAR CONFIGURATION (Only shown after login)
 # ==============================================================================
 
 with st.sidebar:
@@ -118,6 +154,44 @@ with st.sidebar:
     
     st.divider()
     
+    # API Key Configuration
+    st.subheader("🔑 API Key")
+    
+    use_custom_api = st.checkbox(
+        "Use my own API key",
+        value=False,
+        help="Check this to use your personal Google AI API key instead of the default."
+    )
+    
+    if use_custom_api:
+        custom_api_key = st.text_input(
+            "Enter your Google AI API Key",
+            type="password",
+            placeholder="AIza...",
+            help="Get your API key from https://aistudio.google.com/app/apikey"
+        )
+        
+        if custom_api_key and len(custom_api_key) > 10:
+            api_key = custom_api_key
+            st.success("✅ Using your custom API key")
+        else:
+            st.warning("⚠️ Please enter a valid API key")
+            api_key = None
+    else:
+        # Use default API key from secrets
+        if "GOOGLE_API_KEY" in st.secrets:
+            api_key = st.secrets["GOOGLE_API_KEY"]
+            if api_key and len(api_key) > 10:
+                st.success("✅ Using default API key")
+            else:
+                st.error("❌ Default API key is invalid")
+                api_key = None
+        else:
+            st.warning("⚠️ No default API key configured. Please use your own key.")
+            api_key = None
+    
+    st.divider()
+    
     st.info("""
     **How to use:**
     1. Enter a valid URL (http/https).
@@ -129,23 +203,16 @@ with st.sidebar:
     
     st.divider()
     
-    # API Key validation with clear messaging
-    if "GOOGLE_API_KEY" in st.secrets:
-        api_key = st.secrets["GOOGLE_API_KEY"]
-        if api_key and len(api_key) > 10:
-            st.success("✅ API Key loaded successfully")
-        else:
-            st.error("❌ GOOGLE_API_KEY appears invalid (too short)")
-            st.stop()
-    else:
-        st.error("""
-        ❌ Missing GOOGLE_API_KEY in secrets.
-        
-        **To fix:**
-        1. Go to App Settings → Secrets
-        2. Add: `GOOGLE_API_KEY = "your-key-here"`
-        """)
-        st.stop()
+    # Logout button
+    if st.button("🚪 Logout", use_container_width=True):
+        st.session_state.authenticated = False
+        st.rerun()
+
+# Check if we have a valid API key before proceeding
+if not api_key:
+    st.error("❌ No valid API key available. Please configure an API key in the sidebar.")
+    st.stop()
+
 
 # ==============================================================================
 # HELPER FUNCTIONS
@@ -500,7 +567,7 @@ if url_input:
     try:
         chat_model = ChatGoogleGenerativeAI(
             model=model_name,
-            google_api_key=st.secrets["GOOGLE_API_KEY"],
+            google_api_key=api_key,  # Uses custom or default API key from sidebar
             temperature=0.3,  # Low temperature for consistent, factual output
             max_output_tokens=4096
         )
