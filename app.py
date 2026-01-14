@@ -174,15 +174,14 @@ if not st.session_state.authenticated:
 with st.sidebar:
     st.title("⚙️ AI Configuration")
     
-    # Model Selection - CORRECTED model names for Google AI API
-    # These are the actual API identifiers, not marketing names
+    # Model Selection - Using user's preferred models
     model_name = st.selectbox(
         "Select Gemini Model",
         [
-            "gemini-2.0-flash",              # Latest stable Flash model
-            "gemini-2.0-flash-thinking-exp", # Thinking/reasoning model
-            "gemini-2.0-pro-exp",            # Pro experimental
-            "gemini-1.5-flash",              # Stable fallback (still works)
+            "gemini-2.0-flash",     # Fast, recommended for most
+            "gemini-2.5-pro",       # Pro model
+            "gemini-2.0-pro",       # Alternative Pro
+            "gemini-1.5-flash",     # Stable fallback
         ],
         index=0,  # Default to gemini-2.0-flash
         help="Choose the AI model for analysis"
@@ -192,26 +191,25 @@ with st.sidebar:
     with st.expander("📖 Which model should I use?"):
         st.markdown("""
         **🚀 gemini-2.0-flash** (Recommended)
-        - Latest Flash model, fast & accurate
-        - Best for most SEO audits
-        - Good balance of speed and quality
+        - Fast & accurate for most SEO audits
+        - Best balance of speed and quality
         
-        **🧠 gemini-2.0-flash-thinking-exp**
-        - Experimental thinking/reasoning model
-        - Takes longer but deeper analysis
-        - Best for complex technical pages
+        **💎 gemini-2.5-pro**
+        - Latest Pro model
+        - Best quality analysis
+        - Use for important pages
         
-        **💎 gemini-2.0-pro-exp**
-        - Pro experimental model
-        - Most powerful, best quality
-        - May have rate limits
+        **🔷 gemini-2.0-pro**
+        - Alternative Pro model
+        - Great for detailed analysis
         
         **⚡ gemini-1.5-flash**
-        - Stable, reliable fallback
+        - Stable fallback
         - Use if newer models have issues
         """)
     
     st.divider()
+
 
 
     
@@ -434,21 +432,22 @@ def crawl_url(url: str) -> tuple[dict | None, str | None]:
 @st.cache_data(ttl=3600, show_spinner=False)
 def search_duckduckgo(query: str, max_results: int = 5) -> list[dict]:
     """
-    Performs a DuckDuckGo search using the HTML interface (no API library needed).
-    This is a FALLBACK method that works when the duckduckgo-search library fails.
+    Performs a DuckDuckGo search using multiple parsing strategies.
+    Falls back gracefully if scraping fails.
     
     NOTE: This produces SERP-derived keyword ideas, not authoritative keyword volume data.
-    
-    Returns: List of dicts with 'title', 'link', 'snippet'
     """
     results = []
     
     try:
-        # Use DuckDuckGo HTML search
+        # Use DuckDuckGo HTML search with proper headers
         search_url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
         
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Referer': 'https://duckduckgo.com/',
         }
         
         response = requests.get(search_url, headers=headers, timeout=10)
@@ -456,22 +455,45 @@ def search_duckduckgo(query: str, max_results: int = 5) -> list[dict]:
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # Find result elements
+            # Strategy 1: Try result__body class
             result_elements = soup.find_all('div', class_='result__body')[:max_results]
             
+            # Strategy 2: Try result class if strategy 1 fails
+            if not result_elements:
+                result_elements = soup.find_all('div', class_='result')[:max_results]
+            
+            # Strategy 3: Try links-of-type pattern
+            if not result_elements:
+                result_elements = soup.find_all('div', class_='links_main')[:max_results]
+            
             for elem in result_elements:
-                title_elem = elem.find('a', class_='result__a')
-                snippet_elem = elem.find('a', class_='result__snippet')
+                # Try multiple title selectors
+                title_elem = (
+                    elem.find('a', class_='result__a') or 
+                    elem.find('a', class_='result-link') or
+                    elem.find('h2') or
+                    elem.find('a')
+                )
+                
+                # Try multiple snippet selectors  
+                snippet_elem = (
+                    elem.find('a', class_='result__snippet') or
+                    elem.find('div', class_='result__snippet') or
+                    elem.find('span', class_='result__snippet') or
+                    elem.find('p')
+                )
                 
                 if title_elem:
-                    results.append({
-                        'title': title_elem.get_text(strip=True),
-                        'link': title_elem.get('href', ''),
-                        'snippet': snippet_elem.get_text(strip=True) if snippet_elem else ''
-                    })
+                    title_text = title_elem.get_text(strip=True)
+                    if title_text and len(title_text) > 3:
+                        results.append({
+                            'title': title_text,
+                            'link': title_elem.get('href', ''),
+                            'snippet': snippet_elem.get_text(strip=True)[:200] if snippet_elem else ''
+                        })
         
     except Exception as e:
-        # Silently fail - we don't want search errors to break the app
+        # Log but don't fail
         pass
     
     return results
@@ -479,9 +501,10 @@ def search_duckduckgo(query: str, max_results: int = 5) -> list[dict]:
 
 def get_research_keywords(llm, page_content_snippet: str) -> tuple[str, str, list[dict]]:
     """
-    Uses Gemini to identify the topic, then searches DuckDuckGo for keyword ideas.
+    Uses Gemini to identify the topic and generate keyword suggestions.
+    Also attempts DuckDuckGo search for real-time SERP signals.
     
-    This step injects real-time SERP signals into the analysis.
+    If DuckDuckGo fails, Gemini will generate keywords based on the content alone.
     
     Returns: (topic_string, research_text, source_links)
     """
@@ -492,19 +515,16 @@ def get_research_keywords(llm, page_content_snippet: str) -> tuple[str, str, lis
     topic_chain = topic_prompt | llm | StrOutputParser()
     
     try:
-        # Use first 2000 chars for topic extraction to save tokens
         topic = topic_chain.invoke({"text": page_content_snippet[:2000]}).strip()
-        # Clean up any quotes or extra formatting
         topic = topic.strip('"\'').strip()
     except Exception as e:
         topic = "general topic"
     
-    # Step 2: Perform DuckDuckGo searches
-    # These queries are designed to find keyword opportunities
+    # Step 2: Try DuckDuckGo searches
     search_queries = [
-        f"primary keyword for {topic}",
+        f"{topic} keywords",
         f"{topic} best practices 2026",
-        f"people also ask {topic}"
+        f"{topic} tips"
     ]
     
     all_results = []
@@ -517,17 +537,42 @@ def get_research_keywords(llm, page_content_snippet: str) -> tuple[str, str, lis
         if results:
             research_parts.append(f"**Query:** {query}")
             for r in results:
-                research_parts.append(f"- {r['title']}: {r['snippet'][:150]}...")
+                research_parts.append(f"- {r['title']}: {r['snippet'][:100]}...")
                 source_links.append({'title': r['title'], 'link': r['link']})
             research_parts.append("")
-        else:
-            research_parts.append(f"**Query:** {query}")
-            research_parts.append("- No results found")
-            research_parts.append("")
+            all_results.extend(results)
     
-    research_text = "\n".join(research_parts)
+    # Step 3: If DuckDuckGo failed, use Gemini to generate keyword ideas
+    if not all_results:
+        keyword_prompt = PromptTemplate.from_template(
+            """Based on this content about "{topic}", suggest 10 relevant SEO keywords.
+            Format: One keyword per line, no numbering, no explanations.
+            
+            Content snippet: {content}"""
+        )
+        keyword_chain = keyword_prompt | llm | StrOutputParser()
+        
+        try:
+            gemini_keywords = keyword_chain.invoke({
+                "topic": topic,
+                "content": page_content_snippet[:1500]
+            })
+            
+            research_parts.append("**AI-Generated Keywords** (DuckDuckGo unavailable):")
+            for kw in gemini_keywords.strip().split('\n')[:10]:
+                kw = kw.strip().strip('-').strip('•').strip()
+                if kw:
+                    research_parts.append(f"- {kw}")
+                    source_links.append({'title': kw, 'link': ''})
+            research_parts.append("")
+            research_parts.append("*Note: Keywords generated by AI based on page content.*")
+        except:
+            research_parts.append("**Note:** Could not fetch live keyword data.")
+    
+    research_text = "\n".join(research_parts) if research_parts else "No research data available."
     
     return topic, research_text, source_links
+
 
 
 def analyze_content(llm, page_data: dict, research_data: str) -> str:
