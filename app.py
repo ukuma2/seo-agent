@@ -34,6 +34,7 @@ st.set_page_config(
 )
 
 # System prompt for Gemini - embedded as per requirements
+# Enhanced for richer, more detailed output
 GEMINI_SYSTEM_PROMPT = """
 You are an elite SEO specialist using modern ranking factors (EEAT, Helpfulness, Core Web Vitals).
 You will receive page content and live keyword ideas from search results.
@@ -41,25 +42,55 @@ You will receive page content and live keyword ideas from search results.
 Your task:
 1. Pick the best Primary Keyword based on the research data provided.
 2. Verify keyword placement in Title, H1, and first 100 words.
-3. Target 1-2% keyword density.
-4. Improve readability and user experience.
-5. Output exact replacements for Title, Meta Description, and Introduction.
-6. Remind user to check mobile speed via PageSpeed Insights.
+3. Calculate keyword density and suggest optimal density (1-2%).
+4. Analyze readability and user experience.
+5. Identify content structure issues (headings, paragraphs, lists).
+6. Provide exact replacements for Title, Meta Description, H1, and Introduction.
+7. Suggest internal linking opportunities.
+8. Identify technical SEO issues if visible in content.
 
 You MUST output valid JSON matching this exact schema (no extra text):
 {
     "seo_score": <integer 0-100>,
-    "critical_issues": [<list of max 3 specific critical issues as strings>],
+    "score_breakdown": {
+        "keyword_optimization": <integer 0-25>,
+        "content_quality": <integer 0-25>,
+        "technical_seo": <integer 0-25>,
+        "user_experience": <integer 0-25>
+    },
+    "critical_issues": [<list of max 5 specific critical issues as strings>],
+    "warnings": [<list of max 5 non-critical warnings as strings>],
     "primary_keyword": "<string>",
-    "secondary_keywords": [<list of exactly 5 keyword strings>],
+    "primary_keyword_density": "<string, e.g. '1.2%'>",
+    "secondary_keywords": [<list of exactly 7 keyword strings>],
+    "long_tail_keywords": [<list of 5 long-tail keyword phrases>],
     "suggested_title": "<string, MUST be max 60 characters, include primary keyword>",
     "suggested_meta_description": "<string, MUST be max 160 characters, compelling CTA>",
     "suggested_h1": "<string, recommended H1 tag>",
-    "improved_intro": "<string, rewritten first paragraph with natural keyword inclusion>",
+    "suggested_h2s": [<list of 3-5 recommended H2 subheadings>],
+    "improved_intro": "<string, rewritten first paragraph with natural keyword inclusion, 2-3 sentences>",
+    "improved_conclusion": "<string, suggested conclusion paragraph with CTA>",
     "content_gaps": [<list of missing subtopics the page should cover>],
+    "internal_link_suggestions": [<list of 3 pages/topics to link to>],
+    "word_count_analysis": {
+        "current_estimate": <integer>,
+        "recommended_minimum": <integer>,
+        "verdict": "<string: 'Too short', 'Good', or 'Comprehensive'>"
+    },
+    "readability": {
+        "level": "<string: 'Easy', 'Medium', 'Difficult'>",
+        "suggestions": [<list of 2-3 readability improvement tips>]
+    },
+    "eeat_analysis": {
+        "expertise_signals": "<string: what expertise signals are present or missing>",
+        "trust_signals": "<string: what trust signals are present or missing>",
+        "improvement_tips": [<list of 2-3 EEAT improvement suggestions>]
+    },
+    "action_items": [<prioritized list of top 5 actions to take, in order of impact>],
     "pagespeed_reminder": "Remember to test your page at https://pagespeed.web.dev/"
 }
 """
+
 
 # ==============================================================================
 # CUSTOM CSS
@@ -143,16 +174,45 @@ if not st.session_state.authenticated:
 with st.sidebar:
     st.title("⚙️ AI Configuration")
     
-    # Model Selection - using models specified by user (2026 versions)
-    # NOTE: gemini-1.5-pro is SHUT DOWN, so we only offer these models
+    # Model Selection - updated for 2026 models
+    # NOTE: gemini-1.5-pro is SHUT DOWN, so we only offer current models
     model_name = st.selectbox(
         "Select Gemini Model",
-        ["gemini-2.5-flash", "gemini-3-flash-preview", "gemini-3-pro-preview"],
-        index=0,
-        help="Gemini 2.5 Flash is recommended for speed. Version 3 models are in preview."
+        [
+            "gemini-3-flash",           # Fast, good for most use cases
+            "gemini-3-flash-thinking",  # Slower but deeper analysis
+            "gemini-3-pro-preview",     # Most powerful, preview
+            "gemini-2.5-flash",         # Stable fallback
+        ],
+        index=0,  # Default to gemini-3-flash
+        help="Choose the AI model for analysis"
     )
     
+    # Model Guide
+    with st.expander("📖 Which model should I use?"):
+        st.markdown("""
+        **🚀 gemini-3-flash** (Recommended)
+        - Fast & accurate for most SEO audits
+        - Best balance of speed and quality
+        - Use this for quick checks
+        
+        **🧠 gemini-3-flash-thinking**
+        - Takes longer but thinks deeper
+        - Better for complex/technical pages
+        - Use for detailed competitive analysis
+        
+        **💎 gemini-3-pro-preview**
+        - Most powerful model (preview)
+        - Best for enterprise/critical pages
+        - May have rate limits
+        
+        **⚡ gemini-2.5-flash**
+        - Stable, reliable fallback
+        - Use if newer models have issues
+        """)
+    
     st.divider()
+
     
     # API Key Configuration
     st.subheader("🔑 API Key")
@@ -627,81 +687,183 @@ if url_input:
             st.stop()
     
     # =========================================================================
-    # PHASE 4: RESULTS DISPLAY
+    # PHASE 4: RESULTS DISPLAY (Enhanced)
     # =========================================================================
     st.divider()
     st.subheader("📈 Results & Recommendations")
     
     # Top Metrics Row
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         score = result.get('seo_score', 0)
         st.metric("SEO Score", f"{score}/100")
-        st.progress(min(score / 100, 1.0))  # Ensure progress bar doesn't exceed 1.0
+        st.progress(min(score / 100, 1.0))
         
     with col2:
         st.write("**Primary Keyword**")
         st.info(result.get('primary_keyword', 'N/A'))
         
     with col3:
-        st.write("**Identified Topic**")
-        st.caption(topic)
+        st.write("**Keyword Density**")
+        st.caption(result.get('primary_keyword_density', 'N/A'))
+        
+    with col4:
+        word_count = result.get('word_count_analysis', {})
+        st.write("**Word Count**")
+        st.caption(f"{word_count.get('current_estimate', 'N/A')} words ({word_count.get('verdict', 'N/A')})")
     
-    # Critical Issues Section
-    st.subheader("🚨 Critical Issues")
-    critical_issues = result.get("critical_issues", [])
+    # Score Breakdown
+    score_breakdown = result.get('score_breakdown', {})
+    if score_breakdown:
+        st.subheader("📊 Score Breakdown")
+        sb_col1, sb_col2, sb_col3, sb_col4 = st.columns(4)
+        with sb_col1:
+            st.metric("Keywords", f"{score_breakdown.get('keyword_optimization', 0)}/25")
+        with sb_col2:
+            st.metric("Content", f"{score_breakdown.get('content_quality', 0)}/25")
+        with sb_col3:
+            st.metric("Technical", f"{score_breakdown.get('technical_seo', 0)}/25")
+        with sb_col4:
+            st.metric("UX", f"{score_breakdown.get('user_experience', 0)}/25")
     
-    if critical_issues:
-        for issue in critical_issues:
-            st.markdown(f"- 🔴 {issue}")
+    # Critical Issues & Warnings
+    issues_col1, issues_col2 = st.columns(2)
+    
+    with issues_col1:
+        st.subheader("🚨 Critical Issues")
+        critical_issues = result.get("critical_issues", [])
+        if critical_issues:
+            for issue in critical_issues:
+                st.markdown(f"- 🔴 {issue}")
+        else:
+            st.success("✅ No critical issues!")
+    
+    with issues_col2:
+        st.subheader("⚠️ Warnings")
+        warnings = result.get("warnings", [])
+        if warnings:
+            for warning in warnings:
+                st.markdown(f"- 🟡 {warning}")
+        else:
+            st.success("✅ No warnings!")
+    
+    # Priority Action Items
+    st.subheader("🎯 Priority Action Items")
+    action_items = result.get("action_items", [])
+    if action_items:
+        for i, action in enumerate(action_items, 1):
+            st.markdown(f"**{i}.** {action}")
     else:
-        st.success("✅ No critical issues found!")
+        st.write("No action items generated.")
     
-    # Content Improvements Tabs
+    st.divider()
+    
+    # Content Improvements Tabs (Enhanced)
     st.subheader("✍️ Copy-Paste Improvements")
     
-    tab1, tab2, tab3, tab4 = st.tabs(["📝 Meta Data", "📖 Intro Rewrite", "🔑 Keywords", "🔗 Sources"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "📝 Meta Tags", 
+        "📖 Content", 
+        "🔑 Keywords", 
+        "📚 EEAT Analysis",
+        "📏 Readability",
+        "🔗 Sources"
+    ])
     
     with tab1:
         st.markdown("### Title Tag")
         suggested_title = result.get('suggested_title', 'N/A')
         st.code(suggested_title, language='html')
-        st.caption(f"Characters: {len(suggested_title)}/60")
+        st.caption(f"Characters: {len(str(suggested_title))}/60")
         
         st.markdown("### Meta Description")
         suggested_meta = result.get('suggested_meta_description', 'N/A')
         st.code(suggested_meta, language='html')
-        st.caption(f"Characters: {len(suggested_meta)}/160")
+        st.caption(f"Characters: {len(str(suggested_meta))}/160")
         
         if result.get('suggested_h1'):
             st.markdown("### Recommended H1")
             st.code(result.get('suggested_h1'), language='html')
+        
+        if result.get('suggested_h2s'):
+            st.markdown("### Recommended H2 Subheadings")
+            for h2 in result.get('suggested_h2s', []):
+                st.code(h2, language='html')
     
     with tab2:
         st.markdown("### Optimized Introduction")
         st.write("Replace your current first paragraph with this SEO-optimized version:")
         st.info(result.get('improved_intro', 'N/A'))
-    
-    with tab3:
-        st.markdown("### Secondary Keywords to Target")
-        secondary_kws = result.get('secondary_keywords', [])
-        if secondary_kws:
-            st.write(", ".join([f"`{kw}`" for kw in secondary_kws]))
+        
+        if result.get('improved_conclusion'):
+            st.markdown("### Suggested Conclusion")
+            st.info(result.get('improved_conclusion'))
         
         st.markdown("### Content Gaps (Add Sections On These)")
         content_gaps = result.get('content_gaps', [])
         if content_gaps:
             for gap in content_gaps:
-                st.markdown(f"- {gap}")
+                st.markdown(f"- 📌 {gap}")
         else:
             st.write("No major content gaps identified.")
+        
+        if result.get('internal_link_suggestions'):
+            st.markdown("### Internal Linking Suggestions")
+            for link_idea in result.get('internal_link_suggestions', []):
+                st.markdown(f"- 🔗 {link_idea}")
+    
+    with tab3:
+        st.markdown("### Primary Keyword")
+        st.success(f"**{result.get('primary_keyword', 'N/A')}** (Density: {result.get('primary_keyword_density', 'N/A')})")
+        
+        st.markdown("### Secondary Keywords")
+        secondary_kws = result.get('secondary_keywords', [])
+        if secondary_kws:
+            st.write(", ".join([f"`{kw}`" for kw in secondary_kws]))
+        
+        st.markdown("### Long-Tail Keywords")
+        long_tail = result.get('long_tail_keywords', [])
+        if long_tail:
+            for lt in long_tail:
+                st.markdown(f"- {lt}")
     
     with tab4:
+        eeat = result.get('eeat_analysis', {})
+        if eeat:
+            st.markdown("### Expertise Signals")
+            st.write(eeat.get('expertise_signals', 'N/A'))
+            
+            st.markdown("### Trust Signals")
+            st.write(eeat.get('trust_signals', 'N/A'))
+            
+            st.markdown("### EEAT Improvement Tips")
+            for tip in eeat.get('improvement_tips', []):
+                st.markdown(f"- 💡 {tip}")
+        else:
+            st.write("EEAT analysis not available.")
+    
+    with tab5:
+        readability = result.get('readability', {})
+        if readability:
+            st.markdown(f"### Readability Level: **{readability.get('level', 'N/A')}**")
+            
+            st.markdown("### Improvement Suggestions")
+            for suggestion in readability.get('suggestions', []):
+                st.markdown(f"- ✏️ {suggestion}")
+        
+        word_count = result.get('word_count_analysis', {})
+        if word_count:
+            st.markdown("### Word Count Analysis")
+            st.write(f"**Current:** ~{word_count.get('current_estimate', 'N/A')} words")
+            st.write(f"**Recommended Minimum:** {word_count.get('recommended_minimum', 'N/A')} words")
+            st.write(f"**Verdict:** {word_count.get('verdict', 'N/A')}")
+    
+    with tab6:
         st.markdown("### Research Source Links")
         st.caption("These links were used to derive keyword ideas:")
         if source_links:
-            for link in source_links[:10]:  # Limit to 10 links
+            for link in source_links[:10]:
                 if link.get('link'):
                     st.markdown(f"- [{link['title'][:50]}...]({link['link']})")
         else:
@@ -714,3 +876,4 @@ if url_input:
     # Debug Section
     with st.expander("🔧 Debug: Raw JSON Response"):
         st.json(result)
+
