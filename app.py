@@ -174,41 +174,39 @@ if not st.session_state.authenticated:
 with st.sidebar:
     st.title("⚙️ AI Configuration")
     
-    # Model Selection - Using user's preferred models
+    # Model Selection - Exact models as requested by user
     model_name = st.selectbox(
         "Select Gemini Model",
         [
-            "gemini-2.0-flash",     # Fast, recommended for most
-            "gemini-2.5-pro",       # Pro model
-            "gemini-2.0-pro",       # Alternative Pro
-            "gemini-1.5-flash",     # Stable fallback
+            "gemini-3-flash-preview",  # Gemini 3 Flash (Preview)
+            "gemini-3-pro",            # Gemini 3 Pro
+            "gemini-2.5-pro",          # Gemini 2.5 Pro
         ],
-        index=0,  # Default to gemini-2.0-flash
+        index=0,  # Default to gemini-3-flash-preview
         help="Choose the AI model for analysis"
     )
     
     # Model Guide
     with st.expander("📖 Which model should I use?"):
         st.markdown("""
-        **🚀 gemini-2.0-flash** (Recommended)
-        - Fast & accurate for most SEO audits
-        - Best balance of speed and quality
+        **🚀 gemini-3-flash-preview** (Default)
+        - Latest Gemini 3 Flash model
+        - Fast & cost-efficient
+        - Great for most SEO audits
         
-        **💎 gemini-2.5-pro**
-        - Latest Pro model
-        - Best quality analysis
-        - Use for important pages
+        **💎 gemini-3-pro**
+        - Gemini 3 Pro - most powerful
+        - Best for complex analysis
+        - Use for critical pages
         
-        **🔷 gemini-2.0-pro**
-        - Alternative Pro model
-        - Great for detailed analysis
-        
-        **⚡ gemini-1.5-flash**
-        - Stable fallback
-        - Use if newer models have issues
+        **🔷 gemini-2.5-pro**
+        - Stable Pro model
+        - Excellent quality
+        - Reliable fallback
         """)
     
     st.divider()
+
 
 
 
