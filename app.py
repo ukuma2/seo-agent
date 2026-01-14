@@ -174,44 +174,45 @@ if not st.session_state.authenticated:
 with st.sidebar:
     st.title("⚙️ AI Configuration")
     
-    # Model Selection - updated for 2026 models
-    # NOTE: gemini-1.5-pro is SHUT DOWN, so we only offer current models
+    # Model Selection - CORRECTED model names for Google AI API
+    # These are the actual API identifiers, not marketing names
     model_name = st.selectbox(
         "Select Gemini Model",
         [
-            "gemini-3-flash",           # Fast, good for most use cases
-            "gemini-3-flash-thinking",  # Slower but deeper analysis
-            "gemini-3-pro-preview",     # Most powerful, preview
-            "gemini-2.5-flash",         # Stable fallback
+            "gemini-2.0-flash",              # Latest stable Flash model
+            "gemini-2.0-flash-thinking-exp", # Thinking/reasoning model
+            "gemini-2.0-pro-exp",            # Pro experimental
+            "gemini-1.5-flash",              # Stable fallback (still works)
         ],
-        index=0,  # Default to gemini-3-flash
+        index=0,  # Default to gemini-2.0-flash
         help="Choose the AI model for analysis"
     )
     
     # Model Guide
     with st.expander("📖 Which model should I use?"):
         st.markdown("""
-        **🚀 gemini-3-flash** (Recommended)
-        - Fast & accurate for most SEO audits
-        - Best balance of speed and quality
-        - Use this for quick checks
+        **🚀 gemini-2.0-flash** (Recommended)
+        - Latest Flash model, fast & accurate
+        - Best for most SEO audits
+        - Good balance of speed and quality
         
-        **🧠 gemini-3-flash-thinking**
-        - Takes longer but thinks deeper
-        - Better for complex/technical pages
-        - Use for detailed competitive analysis
+        **🧠 gemini-2.0-flash-thinking-exp**
+        - Experimental thinking/reasoning model
+        - Takes longer but deeper analysis
+        - Best for complex technical pages
         
-        **💎 gemini-3-pro-preview**
-        - Most powerful model (preview)
-        - Best for enterprise/critical pages
+        **💎 gemini-2.0-pro-exp**
+        - Pro experimental model
+        - Most powerful, best quality
         - May have rate limits
         
-        **⚡ gemini-2.5-flash**
+        **⚡ gemini-1.5-flash**
         - Stable, reliable fallback
         - Use if newer models have issues
         """)
     
     st.divider()
+
 
     
     # API Key Configuration
