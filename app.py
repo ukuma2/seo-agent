@@ -34,23 +34,25 @@ st.set_page_config(
 )
 
 # System prompt for Gemini - embedded as per requirements
-# Enhanced for richer, more detailed output
+# Enhanced for richer, more detailed output with EXPLANATIONS
 GEMINI_SYSTEM_PROMPT = """
 You are an elite SEO specialist using modern ranking factors (EEAT, Helpfulness, Core Web Vitals).
 You will receive page content and live keyword ideas from search results.
 
+IMPORTANT: Assess the page ID/INTENT before scoring.
+- **Navigational/Brand** (e.g., Apple, Google): Score on UX, clarity, and trust. Do NOT penalize for low text density.
+- **Informational** (e.g., Blogs, Guides): Score on content depth, keyword coverage, and entity richness.
+- **Transactional** (e.g., Product Pages): Score on trust signals, clear CTAs, and performance.
+
 Your task:
-1. Pick the best Primary Keyword based on the research data provided.
-2. Verify keyword placement in Title, H1, and first 100 words.
-3. Calculate keyword density and suggest optimal density (1-2%).
-4. Analyze readability and user experience.
-5. Identify content structure issues (headings, paragraphs, lists).
-6. Provide exact replacements for Title, Meta Description, H1, and Introduction.
-7. Suggest internal linking opportunities.
-8. Identify technical SEO issues if visible in content.
+1. Determine the Page Intent.
+2. Pick the best Primary Keyword based on research context.
+3. Analyze the page based on its Intent (not generic rules).
+4. Provide exact replacements for Title, Meta, H1, etc., WITH REASONING.
 
 You MUST output valid JSON matching this exact schema (no extra text):
 {
+    "page_intent": "<string: 'Navigational', 'Informational', 'Transactional'>",
     "seo_score": <integer 0-100>,
     "score_breakdown": {
         "keyword_optimization": <integer 0-25>,
@@ -58,19 +60,37 @@ You MUST output valid JSON matching this exact schema (no extra text):
         "technical_seo": <integer 0-25>,
         "user_experience": <integer 0-25>
     },
-    "critical_issues": [<list of max 5 specific critical issues as strings>],
-    "warnings": [<list of max 5 non-critical warnings as strings>],
+    "critical_issues": [<list of max 5 specific critical issues>],
+    "warnings": [<list of max 5 non-critical warnings>],
     "primary_keyword": "<string>",
-    "primary_keyword_density": "<string, e.g. '1.2%'>",
-    "secondary_keywords": [<list of exactly 7 keyword strings>],
-    "long_tail_keywords": [<list of 5 long-tail keyword phrases>],
-    "suggested_title": "<string, MUST be max 60 characters, include primary keyword>",
-    "suggested_meta_description": "<string, MUST be max 160 characters, compelling CTA>",
-    "suggested_h1": "<string, recommended H1 tag>",
-    "suggested_h2s": [<list of 3-5 recommended H2 subheadings>],
-    "improved_intro": "<string, rewritten first paragraph with natural keyword inclusion, 2-3 sentences>",
-    "improved_conclusion": "<string, suggested conclusion paragraph with CTA>",
-    "content_gaps": [<list of missing subtopics the page should cover>],
+    "primary_keyword_density": "<string>",
+    "secondary_keywords": [<list of 7 keywords>],
+    "long_tail_keywords": [<list of 5 long-tail phrases>],
+    "suggested_title": {
+        "text": "<string: max 60 chars>",
+        "reasoning": "<string: why this title is better>"
+    },
+    "suggested_meta_description": {
+        "text": "<string: max 160 chars>",
+        "reasoning": "<string: why this description is better>"
+    },
+    "suggested_h1": {
+        "text": "<string: recommended H1>",
+        "reasoning": "<string: why this H1 is better>"
+    },
+    "suggested_h2s": [
+        {"text": "<string>", "reasoning": "<string>"},
+        {"text": "<string>", "reasoning": "<string>"}
+    ],
+    "improved_intro": {
+        "text": "<string: rewritten paragraph>",
+        "reasoning": "<string: why this is better>"
+    },
+    "improved_conclusion": {
+        "text": "<string: suggested conclusion>",
+        "reasoning": "<string: why this is better>"
+    },
+    "content_gaps": [<list of missing subtopics>],
     "internal_link_suggestions": [<list of 3 pages/topics to link to>],
     "word_count_analysis": {
         "current_estimate": <integer>,
@@ -78,16 +98,15 @@ You MUST output valid JSON matching this exact schema (no extra text):
         "verdict": "<string: 'Too short', 'Good', or 'Comprehensive'>"
     },
     "readability": {
-        "level": "<string: 'Easy', 'Medium', 'Difficult'>",
-        "suggestions": [<list of 2-3 readability improvement tips>]
+        "level": "<string>",
+        "suggestions": [<list of improvement tips>]
     },
     "eeat_analysis": {
-        "expertise_signals": "<string: what expertise signals are present or missing>",
-        "trust_signals": "<string: what trust signals are present or missing>",
-        "improvement_tips": [<list of 2-3 EEAT improvement suggestions>]
+        "expertise_signals": "<string>",
+        "trust_signals": "<string>",
+        "improvement_tips": [<list of suggestions>]
     },
-    "action_items": [<prioritized list of top 5 actions to take, in order of impact>],
-    "pagespeed_reminder": "Remember to test your page at https://pagespeed.web.dev/"
+    "action_items": [<list of top 5 prioritized actions>]
 }
 """
 
@@ -195,8 +214,8 @@ with st.sidebar:
         "Select Gemini Model",
         [
             "gemini-3-flash-preview",  # Gemini 3 Flash (Preview)
-            "gemini-3-pro",            # Gemini 3 Pro
-            "gemini-2.5-pro",          # Gemini 2.5 Pro
+            "gemini-3-pro-preview",    # Gemini 3 Pro (Preview) - CORRECTED
+            "gemini-2.5-pro",          # Gemini 2.5 Pro - CORRECTED
         ],
         index=0,  # Default to gemini-3-flash-preview
         help="Choose the AI model for analysis"
@@ -637,26 +656,38 @@ Analyze this page for SEO and output ONLY valid JSON matching the schema above.
 
 def parse_gemini_response(response_text: str) -> dict:
     """
-    Safely parses the Gemini JSON response, handling common issues.
+    Safely parses the Gemini JSON response.
+    Advanced regex to handle markdown, preambles, and mixed content from Pro models.
     """
-    # Remove markdown code blocks if present
-    clean_text = response_text.strip()
-    clean_text = re.sub(r'^```json\s*', '', clean_text)
-    clean_text = re.sub(r'^```\s*', '', clean_text)
-    clean_text = re.sub(r'\s*```$', '', clean_text)
-    clean_text = clean_text.strip()
-    
-    # Try to parse JSON
     try:
-        return json.loads(clean_text)
-    except json.JSONDecodeError as e:
-        # Try to find JSON object in the response
-        json_match = re.search(r'\{[\s\S]*\}', clean_text)
+        # 1. Clean up known markdown wrapper patterns
+        text = response_text.strip()
+        
+        # 2. Use regex to find the largest outer JSON object
+        # Pattern looks for { ... } across multiple lines
+        json_match = re.search(r'\{(?:[^{}]|(?R))*\}', text, re.DOTALL)
+        
+        # Fallback simplistic regex if recursive regex fails or isn't supported
+        if not json_match:
+             json_match = re.search(r'\{[\s\S]*\}', text)
+             
         if json_match:
-            try:
-                return json.loads(json_match.group())
-            except:
-                pass
+            json_str = json_match.group(0)
+            return json.loads(json_str)
+        else:
+            # If no JSON structure found, raise error
+            raise ValueError("No JSON object found in response")
+            
+    except (json.JSONDecodeError, ValueError) as e:
+        # If parsing fails, try to "fix" common issues
+        try:
+            # Sometimes models return single quotes instead of double
+            fixed_text = text.replace("'", '"')
+            json_match = re.search(r'\{[\s\S]*\}', fixed_text)
+            if json_match:
+                return json.loads(json_match.group(0))
+        except:
+            pass
         raise e
 
 
@@ -747,7 +778,7 @@ if url_input:
             st.stop()
     
     # =========================================================================
-    # PHASE 4: RESULTS DISPLAY (Enhanced)
+    # PHASE 4: RESULTS DISPLAY (Enhanced for Reasoning)
     # =========================================================================
     st.divider()
     st.subheader("📈 Results & Recommendations")
@@ -761,12 +792,12 @@ if url_input:
         st.progress(min(score / 100, 1.0))
         
     with col2:
-        st.write("**Primary Keyword**")
-        st.info(result.get('primary_keyword', 'N/A'))
+        st.write("**Page Intent**")
+        st.info(result.get('page_intent', 'General'))
         
     with col3:
-        st.write("**Keyword Density**")
-        st.caption(result.get('primary_keyword_density', 'N/A'))
+        st.write("**Primary Keyword**")
+        st.caption(result.get('primary_keyword', 'N/A'))
         
     with col4:
         word_count = result.get('word_count_analysis', {})
@@ -798,16 +829,16 @@ if url_input:
                 st.markdown(f"- 🔴 {issue}")
         else:
             st.success("✅ No critical issues!")
-    
+            
     with issues_col2:
         st.subheader("⚠️ Warnings")
         warnings = result.get("warnings", [])
         if warnings:
             for warning in warnings:
-                st.markdown(f"- 🟡 {warning}")
+                st.markdown(f"- 🟠 {warning}")
         else:
             st.success("✅ No warnings!")
-    
+            
     # Priority Action Items
     st.subheader("🎯 Priority Action Items")
     action_items = result.get("action_items", [])
@@ -816,77 +847,105 @@ if url_input:
             st.markdown(f"**{i}.** {action}")
     else:
         st.write("No action items generated.")
-    
+
     st.divider()
     
-    # Content Improvements Tabs (Enhanced)
-    st.subheader("✍️ Copy-Paste Improvements")
+    st.header("✨ Targeted Improvements")
     
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "📝 Meta Tags", 
-        "📖 Content", 
-        "🔑 Keywords", 
-        "📚 EEAT Analysis",
-        "📏 Readability",
+        "🏷️ Meta Tags", 
+        "📝 Content", 
+        "🔑 Keywords",
+        "🏆 EEAT & Trust", 
+        "📖 Readability", 
         "🔗 Sources"
     ])
     
     with tab1:
-        st.markdown("### Title Tag")
-        suggested_title = result.get('suggested_title', 'N/A')
-        st.code(suggested_title, language='html')
-        st.caption(f"Characters: {len(str(suggested_title))}/60")
+        st.subheader("Title & Meta Description")
         
-        st.markdown("### Meta Description")
-        suggested_meta = result.get('suggested_meta_description', 'N/A')
-        st.code(suggested_meta, language='html')
-        st.caption(f"Characters: {len(str(suggested_meta))}/160")
-        
-        if result.get('suggested_h1'):
-            st.markdown("### Recommended H1")
-            st.code(result.get('suggested_h1'), language='html')
-        
-        if result.get('suggested_h2s'):
-            st.markdown("### Recommended H2 Subheadings")
-            for h2 in result.get('suggested_h2s', []):
-                st.code(h2, language='html')
-    
-    with tab2:
-        st.markdown("### Optimized Introduction")
-        st.write("Replace your current first paragraph with this SEO-optimized version:")
-        st.info(result.get('improved_intro', 'N/A'))
-        
-        if result.get('improved_conclusion'):
-            st.markdown("### Suggested Conclusion")
-            st.info(result.get('improved_conclusion'))
-        
-        st.markdown("### Content Gaps (Add Sections On These)")
-        content_gaps = result.get('content_gaps', [])
-        if content_gaps:
-            for gap in content_gaps:
-                st.markdown(f"- 📌 {gap}")
+        # Display with Reasoning
+        s_title = result.get('suggested_title', {})
+        st.write("**Suggested Title:**")
+        if isinstance(s_title, dict):
+            st.code(s_title.get('text', 'N/A'), language='html')
+            if s_title.get('reasoning'):
+                st.caption(f"💡 *Why: {s_title.get('reasoning')}*")
         else:
-            st.write("No major content gaps identified.")
+            st.code(s_title, language='html')
+            
+        s_meta = result.get('suggested_meta_description', {})
+        st.write("**Suggested Meta Description:**")
+        if isinstance(s_meta, dict):
+            st.code(s_meta.get('text', 'N/A'), language='html')
+            if s_meta.get('reasoning'):
+                st.caption(f"💡 *Why: {s_meta.get('reasoning')}*")
+        else:
+            st.code(s_meta, language='html')
+            
+        s_h1 = result.get('suggested_h1', {})
+        st.write("**Suggested H1:**")
+        if isinstance(s_h1, dict):
+            st.code(s_h1.get('text', 'N/A'), language='html')
+            if s_h1.get('reasoning'):
+                st.caption(f"💡 *Why: {s_h1.get('reasoning')}*")
+        else:
+            st.code(s_h1, language='html')
+            
+        st.subheader("Suggested H2s")
+        for h2 in result.get('suggested_h2s', []):
+            if isinstance(h2, dict):
+                st.markdown(f"- **{h2.get('text')}**")
+                st.caption(f"  └─ *{h2.get('reasoning')}*")
+            else:
+                st.markdown(f"- {h2}")
+
+    with tab2:
+        st.subheader("Content Optimization")
         
-        if result.get('internal_link_suggestions'):
-            st.markdown("### Internal Linking Suggestions")
-            for link_idea in result.get('internal_link_suggestions', []):
-                st.markdown(f"- 🔗 {link_idea}")
-    
+        s_intro = result.get('improved_intro', {})
+        with st.expander("📄 Rewritten Introduction (Optimized)", expanded=True):
+            if isinstance(s_intro, dict):
+                st.markdown(s_intro.get('text', 'N/A'))
+                if s_intro.get('reasoning'):
+                    st.caption(f"💡 *Why: {s_intro.get('reasoning')}*")
+            else:
+                st.markdown(s_intro)
+                
+        s_conc = result.get('improved_conclusion', {})
+        with st.expander("🔚 Suggested Conclusion"):
+            if isinstance(s_conc, dict):
+                st.markdown(s_conc.get('text', 'N/A'))
+                if s_conc.get('reasoning'):
+                    st.caption(f"💡 *Why: {s_conc.get('reasoning')}*")
+            else:
+                st.markdown(s_conc)
+                
+        st.subheader("Content Gaps")
+        for gap in result.get('content_gaps', []):
+            st.markdown(f"- 📌 {gap}")
+            
+        st.subheader("Internal Linking Opportunities")
+        for link in result.get('internal_link_suggestions', []):
+            st.markdown(f"- 🔗 {link}")
+
     with tab3:
-        st.markdown("### Primary Keyword")
-        st.success(f"**{result.get('primary_keyword', 'N/A')}** (Density: {result.get('primary_keyword_density', 'N/A')})")
+        st.subheader("Keyword Strategy")
+        st.table({
+            "Metric": ["Primary Keyword", "Density"],
+            "Value": [result.get('primary_keyword'), result.get('primary_keyword_density')]
+        })
         
-        st.markdown("### Secondary Keywords")
-        secondary_kws = result.get('secondary_keywords', [])
-        if secondary_kws:
-            st.write(", ".join([f"`{kw}`" for kw in secondary_kws]))
-        
-        st.markdown("### Long-Tail Keywords")
-        long_tail = result.get('long_tail_keywords', [])
-        if long_tail:
-            for lt in long_tail:
-                st.markdown(f"- {lt}")
+        col_k1, col_k2 = st.columns(2)
+        with col_k1:
+            st.write("**Secondary Keywords**")
+            for kw in result.get('secondary_keywords', []):
+                st.markdown(f"- {kw}")
+        with col_k2:
+            st.write("**Long-Tail Opportunities**")
+            for kw in result.get('long_tail_keywords', []):
+                st.markdown(f"- {kw}")
+
     
     with tab4:
         eeat = result.get('eeat_analysis', {})
