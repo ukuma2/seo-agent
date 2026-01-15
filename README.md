@@ -50,7 +50,7 @@ This app is "GitHub-ready". To deploy for free:
    - Add:
      ```toml
      GOOGLE_API_KEY = "your-google-gemini-api-key"
-     ACCESS_PIN = "2541"
+     ACCESS_PIN = "your-access-pin"
      ```
 6. Save, and your app will be live globally!
 
@@ -60,3 +60,4 @@ This app is "GitHub-ready". To deploy for free:
 - **LangChain**: LLM Orchestration
 - **Google Gemini**: AI Model
 - **DuckDuckGo**: Search Tool
+
