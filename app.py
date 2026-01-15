@@ -135,17 +135,32 @@ st.markdown("""
 # LOGIN SYSTEM
 # ==============================================================================
 
-# The access PIN code (change this to your preferred code)
-ACCESS_PIN = "2541"
-
 # Initialize session state for login
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
+
+# Get PIN from secrets (must be set in .streamlit/secrets.toml or Streamlit Cloud)
+# Format in secrets.toml: ACCESS_PIN = "your-pin-here"
+ACCESS_PIN = st.secrets.get("ACCESS_PIN", None)
 
 # Login screen
 if not st.session_state.authenticated:
     st.title("🔐 SEO Evaluator - Login")
     st.markdown("Please enter the access code to continue.")
+    
+    # Check if PIN is configured
+    if not ACCESS_PIN:
+        st.error("❌ ACCESS_PIN not configured in secrets. Please add it to your secrets.toml")
+        st.info("""
+        **To fix (Streamlit Cloud):**
+        1. Go to App Settings → Secrets
+        2. Add: `ACCESS_PIN = "your-4-digit-pin"`
+        
+        **To fix (Local):**
+        1. Create `.streamlit/secrets.toml`
+        2. Add: `ACCESS_PIN = "your-4-digit-pin"`
+        """)
+        st.stop()
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -166,6 +181,7 @@ if not st.session_state.authenticated:
         st.caption("Contact the administrator if you don't have the access code.")
     
     st.stop()  # Stop execution until authenticated
+
 
 # ==============================================================================
 # SIDEBAR CONFIGURATION (Only shown after login)

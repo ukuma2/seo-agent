@@ -21,12 +21,13 @@ A Python-based AI tool that crawls a webpage, performs real-time keyword researc
    pip install -r requirements.txt
    ```
 
-3. **Set up API Key**:
+3. **Set up Secrets**:
    - Create a file named `secrets.toml` inside a `.streamlit` folder.
    - Path: `.streamlit/secrets.toml`
    - Content:
      ```toml
      GOOGLE_API_KEY = "your-google-gemini-api-key"
+     ACCESS_PIN = "2541"
      ```
 
 4. **Run the app**:
@@ -44,13 +45,15 @@ This app is "GitHub-ready". To deploy for free:
 2. Go to [share.streamlit.io](https://share.streamlit.io/).
 3. Connect your GitHub account and select your new repository.
 4. Click **Deploy**.
-5. **Important**: You must add your API Key in the Streamlit Cloud Dashboard:
+5. **Important**: You must add your secrets in the Streamlit Cloud Dashboard:
    - Go to your App Settings -> **Secrets**.
    - Add:
      ```toml
      GOOGLE_API_KEY = "your-google-gemini-api-key"
+     ACCESS_PIN = "2541"
      ```
 6. Save, and your app will be live globally!
+
 
 ## Tech Stack
 - **Streamlit**: Frontend
