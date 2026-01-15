@@ -591,7 +591,10 @@ def get_research_keywords(llm, page_content_snippet: str) -> tuple[str, str, lis
                 "content": page_content_snippet[:1500]
             })
             
-            research_parts.append("**AI-Generated Keywords** (DuckDuckGo unavailable):")
+            research_parts.append("**⚠️ Live Search Unavailable (Using AI-Generated Keywords)**")
+            research_parts.append("*DuckDuckGo search connection failed (likely rate-limited). Using Gemini AI to imply keywords from content context instead.*")
+            research_parts.append("")
+            
             for kw in gemini_keywords.strip().split('\n')[:10]:
                 kw = kw.strip().strip('-').strip('•').strip()
                 if kw:
@@ -665,7 +668,8 @@ def parse_gemini_response(response_text: str) -> dict:
         
         # 2. Use regex to find the largest outer JSON object
         # Pattern looks for { ... } across multiple lines
-        json_match = re.search(r'\{(?:[^{}]|(?R))*\}', text, re.DOTALL)
+        # Pattern looks for { ... } across multiple lines
+        json_match = re.search(r'\{[\s\S]*\}', text)
         
         # Fallback simplistic regex if recursive regex fails or isn't supported
         if not json_match:
