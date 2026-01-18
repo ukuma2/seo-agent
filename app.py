@@ -220,6 +220,7 @@ with st.sidebar:
         index=0,  # Default to gemini-3-flash-preview
         help="Choose the AI model for analysis"
     )
+    st.session_state['model_name'] = model_name
     
     # Model Guide
     with st.expander("📖 Which model should I use?"):
@@ -304,6 +305,9 @@ with st.sidebar:
 if not api_key:
     st.error("❌ No valid API key available. Please configure an API key in the sidebar.")
     st.stop()
+
+# Store API key in session state for other pages
+st.session_state['api_key'] = api_key
 
 
 # ==============================================================================
@@ -748,6 +752,9 @@ if url_input:
         st.write(f"**Content Length:** {len(page_data['page_content']):,} characters")
         
         status.update(label="✅ Website Crawled Successfully!", state="complete", expanded=False)
+        
+        # Save to session state
+        st.session_state['page_data'] = page_data
     
     # =========================================================================
     # PHASE 2: RESEARCH
@@ -761,6 +768,11 @@ if url_input:
             st.text(research_text)
         
         status.update(label="✅ Research Completed!", state="complete", expanded=False)
+        
+        # Save to session state
+        st.session_state['connected_topic'] = topic
+        st.session_state['research_text'] = research_text
+        st.session_state['source_links'] = source_links
     
     # =========================================================================
     # PHASE 3: GEMINI ANALYSIS
@@ -769,6 +781,9 @@ if url_input:
         try:
             analysis_response = analyze_content(chat_model, page_data, research_text)
             result = parse_gemini_response(analysis_response)
+            
+            # Save to session state
+            st.session_state['analysis_result'] = result
             
         except json.JSONDecodeError as e:
             st.error("❌ Error parsing AI response. The model returned invalid JSON.")
