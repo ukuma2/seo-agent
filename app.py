@@ -17,6 +17,7 @@ import json
 import requests
 import re
 from urllib.parse import urlparse, quote_plus
+from datetime import datetime
 from bs4 import BeautifulSoup
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate
@@ -39,10 +40,14 @@ GEMINI_SYSTEM_PROMPT = """
 You are an elite SEO specialist using modern ranking factors (EEAT, Helpfulness, Core Web Vitals).
 You will receive page content and live keyword ideas from search results.
 
+CURRENT DATE: {current_date}
+Note: Use this date as context. Dates before this are in the past. Dates after this are in the future.
+
 IMPORTANT: Assess the page ID/INTENT before scoring.
 - **Navigational/Brand** (e.g., Apple, Google): Score on UX, clarity, and trust. Do NOT penalize for low text density.
 - **Informational** (e.g., Blogs, Guides): Score on content depth, keyword coverage, and entity richness.
 - **Transactional** (e.g., Product Pages): Score on trust signals, clear CTAs, and performance.
+"""
 
 Your task:
 1. Determine the Page Intent.
@@ -650,8 +655,12 @@ Analyze this page for SEO and output ONLY valid JSON matching the schema above.
     # Truncate content to manage token usage (Gemini has large context but we want speed)
     truncated_content = page_data['page_content'][:15000]
     
+    # Inject current date into the system prompt
+    current_date = datetime.now().strftime("%B %d, %Y")  # e.g., "January 19, 2026"
+    formatted_system_prompt = GEMINI_SYSTEM_PROMPT.format(current_date=current_date)
+    
     return chain.invoke({
-        "system_prompt": GEMINI_SYSTEM_PROMPT,
+        "system_prompt": formatted_system_prompt,
         "url": page_data.get('url', 'N/A'),
         "title": page_data.get('title', 'N/A'),
         "h1": page_data.get('h1', 'N/A'),
@@ -664,20 +673,20 @@ Analyze this page for SEO and output ONLY valid JSON matching the schema above.
 def parse_gemini_response(response_text: str) -> dict:
     """
     Safely parses the Gemini JSON response.
-    Advanced regex to handle markdown, preambles, and mixed content from Pro models.
+    Advanced cleaning to handle markdown fences, preambles, and verbose Pro model output.
     """
     try:
         # 1. Clean up known markdown wrapper patterns
         text = response_text.strip()
         
-        # 2. Use regex to find the largest outer JSON object
-        # Pattern looks for { ... } across multiple lines
+        # 2. Remove markdown code fences (```json ... ``` or ``` ... ```)
+        text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
+        text = re.sub(r'```\s*$', '', text, flags=re.MULTILINE)
+        text = text.strip()
+        
+        # 3. Use regex to find the largest outer JSON object
         # Pattern looks for { ... } across multiple lines
         json_match = re.search(r'\{[\s\S]*\}', text)
-        
-        # Fallback simplistic regex if recursive regex fails or isn't supported
-        if not json_match:
-             json_match = re.search(r'\{[\s\S]*\}', text)
              
         if json_match:
             json_str = json_match.group(0)
@@ -691,6 +700,8 @@ def parse_gemini_response(response_text: str) -> dict:
         try:
             # Sometimes models return single quotes instead of double
             fixed_text = text.replace("'", '"')
+            # Also try to fix trailing commas (common LLM error)
+            fixed_text = re.sub(r',\s*([\]\}])', r'\1', fixed_text)
             json_match = re.search(r'\{[\s\S]*\}', fixed_text)
             if json_match:
                 return json.loads(json_match.group(0))
