@@ -860,7 +860,7 @@ def parse_gemini_response(response_text: str) -> dict:
 # ==============================================================================
 
 st.title("📊 Advanced SEO Content Evaluator")
-st.caption("v2.2 - Fixed Critical JSON Error")
+st.caption("v2.3 - Fixed Chatbot Output & Parsing")
 st.markdown("Enter a URL to audit its SEO performance and get AI-driven improvements based on live search data.")
 
 # URL Input
@@ -1239,9 +1239,42 @@ with st.popover("💬 Ask AI", use_container_width=False):
                     chat_llm = ChatOpenAI(model=model_name, api_key=api_key, temperature=0.4)
                 
                 res = st.session_state['analysis_result']
-                ctx = f"SEO Score: {res.get('seo_score')}/100. Issues: {res.get('critical_issues')}. Question: {prompt}"
-                response = chat_llm.invoke(ctx).content
-                st.session_state.chat_messages.append({"role": "assistant", "content": response})
+                
+                # Better prompt construction
+                system_msg = (
+                    "You are a helpful SEO Assistant. "
+                    "Use the provided SEO audit data to answer the user's question. "
+                    "Keep answers concise, professional, and formatted in Markdown. "
+                    "Do NOT output raw data structures."
+                )
+                
+                user_msg = f"""
+                Context from SEO Audit:
+                - Overall Score: {res.get('seo_score')}/100
+                - Critical Issues: {res.get('critical_issues')}
+                - Page Intent: {res.get('page_intent')}
+                
+                User Question: {prompt}
+                """
+                
+                messages = [
+                    ("system", system_msg),
+                    ("user", user_msg)
+                ]
+                
+                response_content = chat_llm.invoke(messages).content
+                
+                # Handle list-based content (common with some Gemini versions)
+                if isinstance(response_content, list):
+                    clean_text = ""
+                    for block in response_content:
+                        if isinstance(block, dict) and 'text' in block:
+                            clean_text += block['text']
+                        elif isinstance(block, str):
+                            clean_text += block
+                    response_content = clean_text
+                
+                st.session_state.chat_messages.append({"role": "assistant", "content": response_content})
             except Exception as e:
                 st.session_state.chat_messages.append({"role": "assistant", "content": f"Error: {e}"})
         else:
