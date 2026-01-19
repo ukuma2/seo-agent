@@ -48,7 +48,6 @@ IMPORTANT: Assess the page ID/INTENT before scoring.
 - **Navigational/Brand** (e.g., Apple, Google): Score on UX, clarity, and trust. Do NOT penalize for low text density.
 - **Informational** (e.g., Blogs, Guides): Score on content depth, keyword coverage, and entity richness.
 - **Transactional** (e.g., Product Pages): Score on trust signals, clear CTAs, and performance.
-"""
 
 Your task:
 1. Determine the Page Intent.
