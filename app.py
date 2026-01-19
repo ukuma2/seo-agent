@@ -860,7 +860,7 @@ def parse_gemini_response(response_text: str) -> dict:
 # ==============================================================================
 
 st.title("📊 Advanced SEO Content Evaluator")
-st.caption("v2.3 - Fixed Chatbot Output & Parsing")
+st.caption("v2.4 - Fixed Chat Persistence & Visibility")
 st.markdown("Enter a URL to audit its SEO performance and get AI-driven improvements based on live search data.")
 
 # URL Input
@@ -1191,9 +1191,9 @@ if url_input:
 # FLOATING CHAT ASSISTANT
 # ==============================================================================
 
-# Initialize chat state
-if 'chat_messages' not in st.session_state:
-    st.session_state.chat_messages = []
+# Initialize chat state (Synced with pages/1_💬_Ask_AI.py)
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
 
 # Create floating chat button using Streamlit popover
 with st.popover("💬 Ask AI", use_container_width=False):
@@ -1203,32 +1203,34 @@ with st.popover("💬 Ask AI", use_container_width=False):
     if 'analysis_result' in st.session_state and 'page_data' in st.session_state:
         st.success("✅ Analysis context loaded")
     else:
-        st.warning("⚠️ Run an analysis first for context-aware chat")
+        st.caption("ℹ️ Run an analysis to unlock context-aware answers")
     
     st.divider()
     
     # Quick actions
-    st.markdown("**Quick Actions:**")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("📝 Rewrite Intro", use_container_width=True):
-            st.session_state.chat_messages.append({"role": "user", "content": "Rewrite the introduction with better SEO"})
-    with col2:
-        if st.button("❓ Generate FAQs", use_container_width=True):
-            st.session_state.chat_messages.append({"role": "user", "content": "Generate 5 FAQ questions"})
-    
-    st.divider()
+    if not st.session_state.messages:
+        st.markdown("**Quick Actions:**")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("📝 Rewrite Intro", use_container_width=True):
+                st.session_state.messages.append({"role": "user", "content": "Rewrite the introduction with better SEO"})
+                st.rerun()
+        with col2:
+            if st.button("❓ Generate FAQs", use_container_width=True):
+                st.session_state.messages.append({"role": "user", "content": "Generate 5 FAQ questions"})
+                st.rerun()
+        st.divider()
     
     # Chat messages
-    chat_container = st.container(height=200)
+    chat_container = st.container(height=300)
     with chat_container:
-        for msg in st.session_state.chat_messages:
+        for msg in st.session_state.messages:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
     
     # Chat input
     if prompt := st.chat_input("Ask about your SEO..."):
-        st.session_state.chat_messages.append({"role": "user", "content": prompt})
+        st.session_state.messages.append({"role": "user", "content": prompt})
         
         if 'analysis_result' in st.session_state and api_key:
             try:
@@ -1257,12 +1259,12 @@ with st.popover("💬 Ask AI", use_container_width=False):
                 User Question: {prompt}
                 """
                 
-                messages = [
+                messages_payload = [
                     ("system", system_msg),
                     ("user", user_msg)
                 ]
                 
-                response_content = chat_llm.invoke(messages).content
+                response_content = chat_llm.invoke(messages_payload).content
                 
                 # Handle list-based content (common with some Gemini versions)
                 if isinstance(response_content, list):
@@ -1274,11 +1276,12 @@ with st.popover("💬 Ask AI", use_container_width=False):
                             clean_text += block
                     response_content = clean_text
                 
-                st.session_state.chat_messages.append({"role": "assistant", "content": response_content})
+                st.session_state.messages.append({"role": "assistant", "content": response_content})
             except Exception as e:
-                st.session_state.chat_messages.append({"role": "assistant", "content": f"Error: {e}"})
+                st.session_state.messages.append({"role": "assistant", "content": f"Error: {e}"})
         else:
-            st.session_state.chat_messages.append({"role": "assistant", "content": "Run an analysis first!"})
+            # Fallback if no analysis yet
+            st.session_state.messages.append({"role": "assistant", "content": "Please runs an analysis first so I can see your website data!"})
         st.rerun()
     
     st.divider()
