@@ -805,42 +805,54 @@ Analyze this page for SEO and output ONLY valid JSON matching the schema above.
 
 def parse_gemini_response(response_text: str) -> dict:
     """
-    Safely parses the Gemini JSON response.
-    Advanced cleaning to handle markdown fences, preambles, and verbose Pro model output.
+    Safely parses the AI JSON response with multiple fallback strategies.
     """
-    try:
-        # 1. Clean up known markdown wrapper patterns
-        text = response_text.strip()
-        
-        # 2. Remove markdown code fences (```json ... ``` or ``` ... ```)
-        text = re.sub(r'^```(?:json)?\s*', '', text, flags=re.MULTILINE)
-        text = re.sub(r'```\s*$', '', text, flags=re.MULTILINE)
-        text = text.strip()
-        
-        # 3. Use regex to find the largest outer JSON object
-        # Pattern looks for { ... } across multiple lines
-        json_match = re.search(r'\{[\s\S]*\}', text)
-             
-        if json_match:
-            json_str = json_match.group(0)
-            return json.loads(json_str)
-        else:
-            # If no JSON structure found, raise error
-            raise ValueError("No JSON object found in response")
-            
-    except (json.JSONDecodeError, ValueError) as e:
-        # If parsing fails, try to "fix" common issues
+    if not response_text or not response_text.strip():
+        raise ValueError("Empty response from AI")
+    
+    text = response_text.strip()
+    
+    # Strategy 1: Remove markdown code fences
+    text = re.sub(r'^```(?:json)?[\s\n]*', '', text)
+    text = re.sub(r'[\s\n]*```$', '', text)
+    text = text.strip()
+    
+    # Strategy 2: Find JSON object with regex
+    json_match = re.search(r'\{[\s\S]*\}', text)
+    
+    if json_match:
+        json_str = json_match.group(0)
         try:
-            # Sometimes models return single quotes instead of double
-            fixed_text = text.replace("'", '"')
-            # Also try to fix trailing commas (common LLM error)
-            fixed_text = re.sub(r',\s*([\]\}])', r'\1', fixed_text)
-            json_match = re.search(r'\{[\s\S]*\}', fixed_text)
-            if json_match:
-                return json.loads(json_match.group(0))
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            # Try fixing common issues
+            fixed = json_str.replace("'", '"')
+            fixed = re.sub(r',\s*([\]\}])', r'\1', fixed)
+            try:
+                return json.loads(fixed)
+            except:
+                pass
+    
+    # Strategy 3: If response looks like JSON content without braces, wrap it
+    if '"page_intent"' in text or "'page_intent'" in text:
+        # Try wrapping with braces
+        wrapped = "{" + text + "}"
+        wrapped = wrapped.replace("'", '"')
+        wrapped = re.sub(r',\s*([\]\}])', r'\1', wrapped)
+        try:
+            return json.loads(wrapped)
         except:
             pass
-        raise e
+    
+    # Strategy 4: Try direct parse (maybe it's already valid)
+    try:
+        return json.loads(text)
+    except:
+        pass
+    
+    # Nothing worked - raise with helpful error
+    preview = text[:100] if len(text) > 100 else text
+    raise ValueError(f"Could not parse AI response. Preview: {preview}")
 
 
 # ==============================================================================
