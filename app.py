@@ -20,6 +20,7 @@ from urllib.parse import urlparse, quote_plus
 from datetime import datetime
 from bs4 import BeautifulSoup
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
@@ -152,6 +153,57 @@ st.markdown("""
     .stCodeBlock {
         background-color: #1e1e1e !important;
     }
+    /* Floating Chat Button */
+    .floating-chat-container {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 9999;
+    }
+    .chat-bubble {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 60px;
+        height: 60px;
+        font-size: 24px;
+        cursor: pointer;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .chat-bubble:hover {
+        transform: scale(1.1);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+    }
+    /* Chat Modal */
+    .chat-modal {
+        position: fixed;
+        bottom: 90px;
+        right: 20px;
+        width: 380px;
+        max-height: 500px;
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        z-index: 9998;
+        overflow: hidden;
+    }
+    .chat-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 15px;
+        font-weight: bold;
+    }
+    .chat-messages {
+        height: 350px;
+        overflow-y: auto;
+        padding: 15px;
+    }
+    .chat-input-area {
+        padding: 10px;
+        border-top: 1px solid #eee;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -214,90 +266,170 @@ if not st.session_state.authenticated:
 with st.sidebar:
     st.title("⚙️ AI Configuration")
     
-    # Model Selection - Exact models as requested by user
-    model_name = st.selectbox(
-        "Select Gemini Model",
-        [
-            "gemini-3-flash-preview",  # Gemini 3 Flash (Preview)
-            "gemini-3-pro-preview",    # Gemini 3 Pro (Preview) - CORRECTED
-            "gemini-2.5-pro",          # Gemini 2.5 Pro - CORRECTED
-        ],
-        index=0,  # Default to gemini-3-flash-preview
-        help="Choose the AI model for analysis"
+    # Provider Selection
+    ai_provider = st.selectbox(
+        "AI Provider",
+        ["Google Gemini", "OpenAI"],
+        index=0,
+        help="Choose your AI provider"
     )
-    st.session_state['model_name'] = model_name
-    
-    # Model Guide
-    with st.expander("📖 Which model should I use?"):
-        st.markdown("""
-        **🚀 gemini-3-flash-preview** (Default)
-        - Latest Gemini 3 Flash model
-        - Fast & cost-efficient
-        - Great for most SEO audits
-        
-        **💎 gemini-3-pro**
-        - Gemini 3 Pro - most powerful
-        - Best for complex analysis
-        - Use for critical pages
-        
-        **🔷 gemini-2.5-pro**
-        - Stable Pro model
-        - Excellent quality
-        - Reliable fallback
-        """)
+    st.session_state['ai_provider'] = ai_provider
     
     st.divider()
-
-
-
-
+    
+    # Model Selection based on provider
+    if ai_provider == "Google Gemini":
+        model_name = st.selectbox(
+            "Select Model",
+            [
+                "gemini-3-flash-preview",
+                "gemini-3-pro-preview",
+                "gemini-2.5-pro",
+            ],
+            index=0,
+            help="Choose the Gemini model"
+        )
+        
+        # Model Guide - Gemini
+        with st.expander("📖 Model Guide"):
+            st.markdown("""
+            **🚀 gemini-3-flash-preview** (Default)
+            - Fast & cost-efficient ($0.075/1M input)
+            
+            **💎 gemini-3-pro-preview**
+            - Most powerful ($1.25/1M input)
+            
+            **🔷 gemini-2.5-pro**
+            - Stable & reliable ($1.25/1M input)
+            """)
+    
+    else:  # OpenAI
+        model_name = st.selectbox(
+            "Select Model",
+            [
+                "gpt-4o",
+                "gpt-4o-mini",
+                "gpt-5.2",
+                "o3",
+                "o4-mini",
+            ],
+            index=0,
+            help="Choose the OpenAI model"
+        )
+        
+        # Model Guide - OpenAI
+        with st.expander("📖 Model Guide"):
+            st.markdown("""
+            **🔷 gpt-4o** (Default)
+            - Multimodal, general use ($2.50/1M input)
+            
+            **⚡ gpt-4o-mini**
+            - Fast & cheap ($0.15/1M input)
+            
+            **🧠 gpt-5.2**
+            - Flagship reasoning ($5.00/1M input)
+            
+            **🔬 o3**
+            - Deep logic/STEM ($10.00/1M input)
+            
+            **💡 o4-mini**
+            - Cost-effective reasoning ($2.00/1M input)
+            """)
+    
+    st.session_state['model_name'] = model_name
+    
+    st.divider()
     
     # API Key Configuration
     st.subheader("🔑 API Key")
     
-    use_custom_api = st.checkbox(
-        "Use my own API key",
-        value=False,
-        help="Check this to use your personal Google AI API key instead of the default."
-    )
-    
-    if use_custom_api:
-        custom_api_key = st.text_input(
-            "Enter your Google AI API Key",
-            type="password",
-            placeholder="AIza...",
-            help="Get your API key from https://aistudio.google.com/app/apikey"
+    if ai_provider == "Google Gemini":
+        use_custom_api = st.checkbox(
+            "Use my own API key",
+            value=False,
+            help="Use your personal Google AI API key"
         )
         
-        if custom_api_key and len(custom_api_key) > 10:
-            api_key = custom_api_key
-            st.success("✅ Using your custom API key")
-        else:
-            st.warning("⚠️ Please enter a valid API key")
-            api_key = None
-    else:
-        # Use default API key from secrets
-        if "GOOGLE_API_KEY" in st.secrets:
-            api_key = st.secrets["GOOGLE_API_KEY"]
-            if api_key and len(api_key) > 10:
-                st.success("✅ Using default API key")
+        if use_custom_api:
+            custom_api_key = st.text_input(
+                "Enter Google AI API Key",
+                type="password",
+                placeholder="AIza...",
+                help="Get from https://aistudio.google.com/app/apikey"
+            )
+            if custom_api_key and len(custom_api_key) > 10:
+                api_key = custom_api_key
+                st.success("✅ Using your custom API key")
             else:
-                st.error("❌ Default API key is invalid")
+                st.warning("⚠️ Enter a valid API key")
                 api_key = None
         else:
-            st.warning("⚠️ No default API key configured. Please use your own key.")
+            if "GOOGLE_API_KEY" in st.secrets:
+                api_key = st.secrets["GOOGLE_API_KEY"]
+                if api_key and len(api_key) > 10:
+                    st.success("✅ Using default API key")
+                else:
+                    api_key = None
+            else:
+                st.warning("⚠️ No default key. Use your own.")
+                api_key = None
+    
+    else:  # OpenAI
+        openai_api_key = st.text_input(
+            "Enter OpenAI API Key",
+            type="password",
+            placeholder="sk-...",
+            help="Get from https://platform.openai.com/api-keys"
+        )
+        if openai_api_key and len(openai_api_key) > 10:
+            api_key = openai_api_key
+            st.success("✅ OpenAI API key configured")
+        else:
+            st.warning("⚠️ Enter your OpenAI API key")
             api_key = None
     
     st.divider()
     
     st.info("""
     **How to use:**
-    1. Enter a valid URL (http/https).
-    2. Wait for crawling & research.
-    3. Review the SEO audit & copy improvements.
-    
-    **Note:** This tool uses live SERP data from DuckDuckGo for keyword research.
+    1. Select AI provider & model
+    2. Enter a valid URL
+    3. Review SEO audit & improvements
     """)
+    
+    st.divider()
+    
+    # API Usage Tracking
+    st.subheader("📊 API Usage")
+    
+    # Initialize usage tracking
+    if 'api_usage' not in st.session_state:
+        st.session_state['api_usage'] = {'tokens': 0, 'cost': 0.0}
+    
+    # Model pricing (per 1M tokens)
+    MODEL_PRICING = {
+        # Gemini
+        'gemini-3-flash-preview': {'input': 0.075, 'output': 0.30},
+        'gemini-3-pro-preview': {'input': 1.25, 'output': 5.00},
+        'gemini-2.5-pro': {'input': 1.25, 'output': 5.00},
+        # OpenAI
+        'gpt-4o': {'input': 2.50, 'output': 10.00},
+        'gpt-4o-mini': {'input': 0.15, 'output': 0.60},
+        'gpt-5.2': {'input': 5.00, 'output': 20.00},
+        'o3': {'input': 10.00, 'output': 40.00},
+        'o4-mini': {'input': 2.00, 'output': 8.00},
+    }
+    st.session_state['model_pricing'] = MODEL_PRICING
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Tokens", f"{st.session_state['api_usage']['tokens']:,}")
+    with col2:
+        st.metric("Est. Cost", f"${st.session_state['api_usage']['cost']:.4f}")
+    
+    if st.button("🔄 Reset Usage", use_container_width=True):
+        st.session_state['api_usage'] = {'tokens': 0, 'cost': 0.0}
+        st.rerun()
     
     st.divider()
     
@@ -733,16 +865,26 @@ if url_input:
         st.error(f"❌ {error_msg}")
         st.stop()
     
-    # Initialize Gemini LLM
+    # Initialize LLM based on provider
     try:
-        chat_model = ChatGoogleGenerativeAI(
-            model=model_name,
-            google_api_key=api_key,  # Uses custom or default API key from sidebar
-            temperature=0.3,  # Low temperature for consistent, factual output
-            max_output_tokens=4096
-        )
+        ai_provider = st.session_state.get('ai_provider', 'Google Gemini')
+        
+        if ai_provider == "Google Gemini":
+            chat_model = ChatGoogleGenerativeAI(
+                model=model_name,
+                google_api_key=api_key,
+                temperature=0.3,
+                max_output_tokens=4096
+            )
+        else:  # OpenAI
+            chat_model = ChatOpenAI(
+                model=model_name,
+                api_key=api_key,
+                temperature=0.3,
+                max_tokens=4096
+            )
     except Exception as e:
-        st.error(f"❌ Failed to initialize Gemini model: {str(e)}")
+        st.error(f"❌ Failed to initialize {ai_provider} model: {str(e)}")
         st.info("Please verify your API key is valid and the model name is correct.")
         st.stop()
     
@@ -1025,4 +1167,68 @@ if url_input:
     # Debug Section
     with st.expander("🔧 Debug: Raw JSON Response"):
         st.json(result)
+
+# ==============================================================================
+# FLOATING CHAT ASSISTANT
+# ==============================================================================
+
+# Initialize chat state
+if 'chat_messages' not in st.session_state:
+    st.session_state.chat_messages = []
+
+# Create floating chat button using Streamlit popover
+with st.popover("💬 Ask AI", use_container_width=False):
+    st.markdown("### 🤖 SEO Chat Assistant")
+    
+    # Check if we have analysis context
+    if 'analysis_result' in st.session_state and 'page_data' in st.session_state:
+        st.success("✅ Analysis context loaded")
+    else:
+        st.warning("⚠️ Run an analysis first for context-aware chat")
+    
+    st.divider()
+    
+    # Quick actions
+    st.markdown("**Quick Actions:**")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("📝 Rewrite Intro", use_container_width=True):
+            st.session_state.chat_messages.append({"role": "user", "content": "Rewrite the introduction with better SEO"})
+    with col2:
+        if st.button("❓ Generate FAQs", use_container_width=True):
+            st.session_state.chat_messages.append({"role": "user", "content": "Generate 5 FAQ questions"})
+    
+    st.divider()
+    
+    # Chat messages
+    chat_container = st.container(height=200)
+    with chat_container:
+        for msg in st.session_state.chat_messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+    
+    # Chat input
+    if prompt := st.chat_input("Ask about your SEO..."):
+        st.session_state.chat_messages.append({"role": "user", "content": prompt})
+        
+        if 'analysis_result' in st.session_state and api_key:
+            try:
+                ai_prov = st.session_state.get('ai_provider', 'Google Gemini')
+                if ai_prov == "Google Gemini":
+                    chat_llm = ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, temperature=0.4)
+                else:
+                    chat_llm = ChatOpenAI(model=model_name, api_key=api_key, temperature=0.4)
+                
+                res = st.session_state['analysis_result']
+                ctx = f"SEO Score: {res.get('seo_score')}/100. Issues: {res.get('critical_issues')}. Question: {prompt}"
+                response = chat_llm.invoke(ctx).content
+                st.session_state.chat_messages.append({"role": "assistant", "content": response})
+            except Exception as e:
+                st.session_state.chat_messages.append({"role": "assistant", "content": f"Error: {e}"})
+        else:
+            st.session_state.chat_messages.append({"role": "assistant", "content": "Run an analysis first!"})
+        st.rerun()
+    
+    st.divider()
+    st.page_link("pages/1_💬_Ask_AI.py", label="🔲 Full Screen Chat", icon="💬")
 
