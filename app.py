@@ -929,7 +929,8 @@ if url_input:
     # =========================================================================
     # PHASE 3: GEMINI ANALYSIS
     # =========================================================================
-    with st.spinner("🤖 Phase 3: Gemini is Analyzing SEO & Writing Improvements..."):
+    with st.spinner("🤖 Phase 3: AI is Analyzing SEO & Writing Improvements..."):
+        analysis_response = None
         try:
             analysis_response = analyze_content(chat_model, page_data, research_text)
             result = parse_gemini_response(analysis_response)
@@ -939,13 +940,17 @@ if url_input:
             
         except json.JSONDecodeError as e:
             st.error("❌ Error parsing AI response. The model returned invalid JSON.")
-            with st.expander("Debug: Raw AI Output"):
-                st.code(analysis_response, language="text")
-            st.info("Try clicking 'Analyze' again, or try a different Gemini model.")
+            with st.expander("🔧 Debug: Raw AI Output"):
+                st.code(analysis_response if analysis_response else "No response", language="text")
+            st.info("Try clicking 'Analyze' again, or try a different model.")
             st.stop()
             
         except Exception as e:
             st.error(f"❌ Analysis error: {str(e)}")
+            if analysis_response:
+                with st.expander("🔧 Debug: Raw AI Output"):
+                    st.code(analysis_response[:2000], language="text")
+            st.info("The AI may have returned incomplete output. Try again or use a different model.")
             st.stop()
     
     # =========================================================================
