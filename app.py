@@ -536,6 +536,17 @@ def crawl_url(url: str) -> tuple[dict | None, str | None]:
         h1_tag = soup.find('h1')
         h1 = h1_tag.get_text(strip=True) if h1_tag else "No H1 found"
         
+        # Extract Structured Data (JSON-LD)
+        structured_data = []
+        for script in soup.find_all('script', type='application/ld+json'):
+            if script.string:
+                try:
+                    # Minify JSON by loading and dumping to save tokens
+                    data = json.loads(script.string)
+                    structured_data.append(json.dumps(data))
+                except:
+                    pass
+        
         # Now remove non-content elements for text extraction
         for element in soup(['script', 'style', 'noscript', 'iframe', 'svg']):
             element.decompose()
@@ -591,7 +602,8 @@ def crawl_url(url: str) -> tuple[dict | None, str | None]:
             'title': title,
             'meta_description': meta_description,
             'h1': h1,
-            'url': url
+            'url': url,
+            'structured_data': structured_data
         }, None
         
     except requests.exceptions.Timeout:
@@ -771,6 +783,9 @@ PAGE TITLE: {title}
 PAGE H1: {h1}
 META DESCRIPTION: {meta_description}
 
+STRUCTURED DATA FOUND (JSON-LD):
+{structured_data}
+
 LIVE KEYWORD RESEARCH FROM SERP:
 {research}
 
@@ -792,12 +807,18 @@ Analyze this page for SEO and output ONLY valid JSON matching the schema above.
     current_date = datetime.now().strftime("%B %d, %Y")  # e.g., "January 19, 2026"
     formatted_system_prompt = GEMINI_SYSTEM_PROMPT.replace("{current_date}", current_date)
     
+    # Format structured data for prompt
+    struct_data_str = "\n".join(page_data.get('structured_data', []))
+    if not struct_data_str:
+        struct_data_str = "No JSON-LD structured data found."
+
     return chain.invoke({
         "system_prompt": formatted_system_prompt,
         "url": page_data.get('url', 'N/A'),
         "title": page_data.get('title', 'N/A'),
         "h1": page_data.get('h1', 'N/A'),
         "meta_description": page_data.get('meta_description', 'N/A'),
+        "structured_data": struct_data_str,
         "research": research_data,
         "content": truncated_content
     })
@@ -860,7 +881,7 @@ def parse_gemini_response(response_text: str) -> dict:
 # ==============================================================================
 
 st.title("📊 Advanced SEO Content Evaluator")
-st.caption("v2.4 - Fixed Chat Persistence & Visibility")
+st.caption("v2.5 - Fixed False Positive Structured Data Warnings")
 st.markdown("Enter a URL to audit its SEO performance and get AI-driven improvements based on live search data.")
 
 # URL Input
