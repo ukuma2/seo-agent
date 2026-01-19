@@ -790,7 +790,7 @@ Analyze this page for SEO and output ONLY valid JSON matching the schema above.
     
     # Inject current date into the system prompt
     current_date = datetime.now().strftime("%B %d, %Y")  # e.g., "January 19, 2026"
-    formatted_system_prompt = GEMINI_SYSTEM_PROMPT.format(current_date=current_date)
+    formatted_system_prompt = GEMINI_SYSTEM_PROMPT.replace("{current_date}", current_date)
     
     return chain.invoke({
         "system_prompt": formatted_system_prompt,
@@ -860,7 +860,7 @@ def parse_gemini_response(response_text: str) -> dict:
 # ==============================================================================
 
 st.title("📊 Advanced SEO Content Evaluator")
-st.caption("v2.1 - Updated Jan 19, 2026")
+st.caption("v2.2 - Fixed Critical JSON Error")
 st.markdown("Enter a URL to audit its SEO performance and get AI-driven improvements based on live search data.")
 
 # URL Input
