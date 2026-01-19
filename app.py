@@ -860,6 +860,7 @@ def parse_gemini_response(response_text: str) -> dict:
 # ==============================================================================
 
 st.title("📊 Advanced SEO Content Evaluator")
+st.caption("v2.1 - Updated Jan 19, 2026")
 st.markdown("Enter a URL to audit its SEO performance and get AI-driven improvements based on live search data.")
 
 # URL Input
