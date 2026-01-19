@@ -113,6 +113,8 @@ You MUST output valid JSON matching this exact schema (no extra text):
     },
     "action_items": [<list of top 5 prioritized actions>]
 }
+
+CRITICAL: Your response MUST be ONLY valid JSON. Start with { and end with }. No explanatory text before or after.
 """
 
 
